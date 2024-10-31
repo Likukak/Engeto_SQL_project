@@ -21,3 +21,4 @@ JOIN czechia_price AS cpr
 		ON cp.payroll_year BETWEEN YEAR (cpr.date_from) AND YEAR (cpr.date_to)
 JOIN czechia_price_category AS cpc 
 		ON cpr.category_code = cpc.code;
+		
