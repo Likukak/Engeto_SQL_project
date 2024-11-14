@@ -22,3 +22,6 @@ JOIN czechia_price AS cpr
 JOIN czechia_price_category AS cpc 
 		ON cpr.category_code = cpc.code;
 		
+SELECT
+	DISTINCT industry
+FROM avg_industry_payroll_per_year AS aippy; 
