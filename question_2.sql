@@ -1,68 +1,28 @@
 -- Kolik je možné si koupit litrů mléka a kilogramů chleba za první a poslední srovnatelné období v dostupných datech cen a mezd?
 
--- Pohled pro roční průměrné ceny mléka a chleba
-CREATE OR REPLACE VIEW avg_bread_milk_prices_per_year AS
+-- Pohled na porovnání cen chleba, mléka a mezd v odvětví i celonárodní průměrné mzdy.
+CREATE OR REPLACE VIEW bread_milk_price_vs_payroll AS
 SELECT 
-    year,
-    food_category_code,
-    food_name,
-    ROUND(AVG(food_price), 2) AS avg_price
-FROM t_romana_belohoubkova_project_sql_primary_final AS trbpspf
-WHERE food_category_code IN (114201, 111301) -- 114201: mléko, 111301: chléb
-GROUP BY year, food_category_code, food_name
-ORDER BY YEAR, food_category_code;
+    pta.year,
+    pta.industry,
+    pta.industry_code,
+    AVG(pta.avg_payroll) AS avg_payroll,
+    AVG(pta.prev_year_payroll) AS prev_year_payroll,
+    AVG(pta.national_avg_payroll) AS national_avg_payroll,
+    ROUND(AVG(pta.percent_change), 2) AS percent_change,
+    pta.trend,
+    trbpspf.food_category_code,  -- Přidání food_category_code
+    trbpspf.food_name,  -- Přidání food_name
+    AVG(trbpspf.food_price) AS food_price,
+    ROUND((AVG(pta.avg_payroll) / AVG(trbpspf.food_price)), 2) AS number_of_pieces,
+    ROUND((AVG(pta.national_avg_payroll) / AVG(trbpspf.food_price)), 2) AS national_number_of_pieces
+FROM payroll_trend_analysis AS pta 
+JOIN t_romana_belohoubkova_project_SQL_primary_final AS trbpspf
+    ON trbpspf.year = pta.year
+WHERE trbpspf.food_category_code IN (114201, 111301) -- 114201: mléko, 111301: chléb
+GROUP BY pta.year, pta.industry, pta.industry_code, pta.trend, trbpspf.food_category_code, trbpspf.food_name;
 
--- Pohled pro roční průměrnou mzdu napříč všemi odvětvími (celonárodní průměr).
-CREATE OR REPLACE VIEW avg_national_payroll_per_year AS
-SELECT 
-    year,
-    ROUND(AVG(avg_payroll), 1) AS avg_national_payroll
-FROM avg_industry_payroll_per_year AS aippy 
-GROUP BY year
-ORDER BY year;
-
--- Pohled pro počet kusů mléka a chleba, které lze koupit za průměrnou celonárodní mzdu v jednotlivých letech.
-CREATE OR REPLACE VIEW avg_number_of_pieces_national AS
-SELECT 
-    anppy.year,
-    anppy.avg_national_payroll,
-    abmppy.food_category_code,
-    abmppy.food_name,
-    abmppy.avg_price,
-    ROUND(anppy.avg_national_payroll / abmppy.avg_price, 2) AS number_of_pieces
-FROM avg_national_payroll_per_year AS anppy
-JOIN avg_bread_milk_prices_per_year AS abmppy
-ON anppy.year = abmppy.year
-ORDER BY anppy.year, abmppy.food_category_code;
-
--- Pohled, který nám ukáže kolik kusů chleba a mléka lze koupit v průběhu let za výplaty v různých odvětvých.
-CREATE OR REPLACE VIEW avg_number_of_pieces_per_industry AS
-SELECT 
-    aippy.year,
-    aippy.industry,
-    aippy.industry_code,
-    aippy.avg_payroll,
-    abmppy.food_category_code,
-    abmppy.food_name,
-    abmppy.avg_price,
-    ROUND(aippy.avg_payroll / abmppy.avg_price) AS number_of_pieces
-FROM avg_industry_payroll_per_year AS aippy 
-JOIN avg_bread_milk_prices_per_year AS abmppy 
-	ON aippy.year = abmppy.year
-ORDER BY aippy.year, aippy.industry_code, abmppy.food_category_code;
-
--- Pohled pro přidání ceny mléka a chleba z předchozího roku pomocí LAG
-CREATE OR REPLACE VIEW bread_milk_yearly_change AS
-SELECT 
-    year,
-    food_category_code,
-    food_name,
-    avg_price,
-    LAG(avg_price) OVER (PARTITION BY food_category_code ORDER BY year) AS prev_year_price
-FROM avg_bread_milk_prices_per_year AS abmppy
-ORDER BY year, food_category_code;
-
--- Pohled pro výpočet procentuální meziroční změny a trendu cen mléka a chleba.
+-- Pohled na porovnání cen mléka a chleba v průběhu let.
 CREATE OR REPLACE VIEW bread_milk_price_trend_analysis AS
 SELECT 
     year,
@@ -80,8 +40,18 @@ SELECT
         WHEN avg_price < prev_year_price THEN 'decreased'
         ELSE 'no change'
     END AS trend
-FROM bread_milk_yearly_change AS bmyc 
-ORDER BY year;
+FROM (
+    SELECT 
+        year,
+        food_category_code,
+        food_name,
+        AVG(food_price) AS avg_price,
+        LAG(AVG(food_price), 1) OVER (PARTITION BY food_category_code ORDER BY year) AS prev_year_price
+    FROM t_romana_belohoubkova_project_sql_primary_final AS trbpspf
+    WHERE food_category_code IN (114201, 111301) -- 114201: mléko, 111301: chléb
+    GROUP BY year, food_category_code, food_name
+) AS bread_milk_yearly_change
+ORDER BY year, food_category_code;
 
 -- Zjisti v kolika letech ceny rostly.
 SELECT 
@@ -115,29 +85,29 @@ ORDER BY avg_growth DESC;
 SELECT 
     food_name,
     ROUND(((MAX(avg_price) - MIN(avg_price)) / MIN(avg_price)) * 100, 2) AS total_percent_change
-FROM bread_milk_yearly_change AS bmyc 
+FROM bread_milk_price_trend_analysis AS bmpta
 GROUP BY food_name
 ORDER BY total_percent_change DESC;
 
 -- Zjisti největší meziroční procentuální nárust ceny mléka a chleba.
 SELECT
-	`year`, 
-	food_name,
-	MAX(percent_change) AS max_percent_change
+    `year`, 
+    food_name,
+    MAX(percent_change) AS max_percent_change
 FROM bread_milk_price_trend_analysis AS bmpta 
 WHERE percent_change IS NOT NULL
-	AND food_category_code = 114201
+    AND food_category_code = 114201  -- Mléko
 GROUP BY `year`, food_name 
 ORDER BY max_percent_change DESC
 LIMIT 1;
 
 SELECT
-	`year`, 
-	food_name,
-	MAX(percent_change) AS max_percent_change
+    `year`, 
+    food_name,
+    MAX(percent_change) AS max_percent_change
 FROM bread_milk_price_trend_analysis AS bmpta 
 WHERE percent_change IS NOT NULL
-	AND food_category_code = 111301
+    AND food_category_code = 111301  -- Chléb
 GROUP BY `year`, food_name 
 ORDER BY max_percent_change DESC
 LIMIT 1;
@@ -149,7 +119,7 @@ SELECT
 	MIN(percent_change) AS min_percent_change
 FROM bread_milk_price_trend_analysis AS bmpta 
 WHERE percent_change IS NOT NULL
-	AND food_category_code = 114201
+	AND food_category_code = 114201 -- Mléko
 GROUP BY `year`, food_name 
 ORDER BY min_percent_change ASC 
 LIMIT 1;
@@ -160,45 +130,40 @@ SELECT
 	MIN(percent_change) AS min_percent_change
 FROM bread_milk_price_trend_analysis AS bmpta 
 WHERE percent_change IS NOT NULL
-	AND food_category_code = 111301
+	AND food_category_code = 111301 -- Chléb
 GROUP BY `year`, food_name 
 ORDER BY min_percent_change ASC
 LIMIT 1;
 
 -- Zjisti kolik bylo možno koupit chleba a mléka za průměrnou mzdu v roce 2006 a 2018.
-SELECT 
-	`year`,
-	food_name,
-	number_of_pieces 
-FROM avg_number_of_pieces_national AS anopn
-WHERE `year` IN (2006,2018)
-ORDER BY YEAR, food_name, number_of_pieces;
+SELECT DISTINCT 
+    `year`,
+    food_name,
+    national_number_of_pieces 
+FROM bread_milk_price_vs_payroll AS bmpvp
+WHERE `year` IN (2006, 2018)
+ORDER BY `year`, food_name, number_of_pieces;
 
 -- Zjisti, které odvětví si mohlo dovolit koupit nejvíce a nejméně mléka a chleba v roce 2006.
 SELECT 
-    anppy.year,
-    anppy.industry,
-    abmppy.food_name,
-    ROUND(anppy.avg_payroll / abmppy.avg_price, 2) AS number_of_pieces
-FROM avg_industry_payroll_per_year AS anppy
-JOIN avg_bread_milk_prices_per_year AS abmppy
-    ON anppy.year = abmppy.year
-WHERE anppy.year = 2006
-    AND abmppy.food_category_code IN (114201, 111301)
-ORDER BY number_of_pieces ASC, anppy.year, anppy.industry, abmppy.food_name;
+    bmpvp.year,
+    bmpvp.industry,
+    bmpvp.food_name,
+    ROUND(bmpvp.number_of_pieces, 2) AS number_of_pieces
+FROM bread_milk_price_vs_payroll AS bmpvp
+WHERE bmpvp.year = 2006
+ORDER BY number_of_pieces ASC, bmpvp.year, bmpvp.industry, bmpvp.food_name;
 
 -- Zjisti, které odvětví si mohlo dovolit koupit nejvíce a nejméně mléka a chleba v roce 2018.
 SELECT 
-    anppy.year,
-    anppy.industry,
-    abmppy.food_name,
-    ROUND(anppy.avg_payroll / abmppy.avg_price, 2) AS number_of_pieces
-FROM avg_industry_payroll_per_year AS anppy
-JOIN avg_bread_milk_prices_per_year AS abmppy
-    ON anppy.year = abmppy.year
-WHERE anppy.year = 2018
-    AND abmppy.food_category_code IN (114201, 111301)
-ORDER BY number_of_pieces ASC, anppy.year, anppy.industry, abmppy.food_name;
+    bmpvp.year,
+    bmpvp.industry,
+    bmpvp.food_name,
+    ROUND(bmpvp.number_of_pieces, 2) AS number_of_pieces
+FROM bread_milk_price_vs_payroll AS bmpvp
+WHERE bmpvp.year = 2018
+ORDER BY number_of_pieces ASC, bmpvp.year, bmpvp.industry, bmpvp.food_name;
+
 
 
 
