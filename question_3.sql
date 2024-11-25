@@ -16,8 +16,8 @@ SELECT
     year,
     food_category_code,
     food_name,
-    avg_food_price,
-    prev_year_price,
+    round(avg_food_price, 2) AS avg_food_price,
+    round(prev_year_price, 2) AS prev_year_price,
     CASE 
         WHEN prev_year_price IS NOT NULL THEN ROUND(((avg_food_price - prev_year_price) / prev_year_price) * 100, 2)
         ELSE NULL
