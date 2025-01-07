@@ -31,22 +31,45 @@ SELECT
     year,
     gdp_percent_change,
     national_payroll_percent_change,
-    avg_food_price_percent_change
+    avg_food_price_percent_change,
+    CASE 
+        WHEN ABS(gdp_percent_change - national_payroll_percent_change) <= 2 THEN 'Related'
+        ELSE 'Unrelated'
+    END AS gdp_payroll_relation,
+    CASE 
+        WHEN ABS(gdp_percent_change - avg_food_price_percent_change) <= 2 THEN 'Realated'
+        ELSE 'Unrelated'
+    END AS gdp_food_price_relation
 FROM v_rb_gdp_payroll_food_price_comparison
+WHERE year > 2006
 ORDER BY year;
 
  -- Zjisti, zda růst HDP v předchozím roce ovlivnil růst mezd nebo cen potravin.
 SELECT 
     year,
     gdp_percent_change,
-    LAG(gdp_percent_change) OVER (ORDER BY year) AS prev_year_gdp_change,
-    national_payroll_percent_change,
-    LAG(national_payroll_percent_change) OVER (ORDER BY year) AS prev_year_payroll_change,
-    avg_food_price_percent_change,
-    LAG(avg_food_price_percent_change) OVER (ORDER BY year) AS prev_year_food_price_change
+    LEAD(national_payroll_percent_change) OVER (ORDER BY year) AS next_year_payroll_change,
+    LEAD(avg_food_price_percent_change) OVER (ORDER BY year) AS next_year_food_price_change,
+    CASE 
+        WHEN ABS(gdp_percent_change - LEAD(national_payroll_percent_change) OVER (ORDER BY year)) <= 3 THEN 'Related'
+        ELSE 'Unrelated'
+    END AS gdp_next_year_payroll_relation,
+    CASE 
+        WHEN ABS(gdp_percent_change - LEAD(avg_food_price_percent_change) OVER (ORDER BY year)) <= 3 THEN 'Related'
+        ELSE 'Unrelated'
+    END AS gdp_next_year_food_price_relation
 FROM v_rb_gdp_payroll_food_price_comparison
-WHERE year > 2006 
+WHERE year > 2006
 ORDER BY year;
+
+-- Zjisti které roky HDP nejvíce rostlo a jak to ovlivnilo mzdy a ceny potravin.
+SELECT 
+	`year`,
+	gdp_percent_change,
+	national_payroll_percent_change,
+	avg_food_price_percent_change 
+FROM v_rb_gdp_payroll_food_price_comparison AS vrgpfpc
+ORDER BY gdp_percent_change DESC; 
 
 -- Zjisti koleraci mezi HDP a platy.
 SELECT 
@@ -73,16 +96,3 @@ CROSS JOIN (
         AVG(avg_food_price_percent_change) AS avg_food_price
     FROM v_rb_gdp_payroll_food_price_comparison
 ) AS averages;
-
--- Analýza, zda změny v HDP mají větší vliv na mzdy nebo ceny potravin
-SELECT
-    vrfpta.year,
-    CASE
-        WHEN gdp_percent_change > 5 THEN 'HDP vysoký růst'
-        WHEN gdp_percent_change < -5 THEN 'HDP pokles'
-        ELSE 'HDP stabilní'
-    END AS gdp_category,
-    ROUND(national_payroll_percent_change, 2) AS avg_payroll_change,
-    ROUND(avg_food_price_percent_change, 2) AS avg_food_price_change
-FROM v_rb_gdp_payroll_food_price_comparison AS vrfpta
-ORDER BY vrfpta.year;
