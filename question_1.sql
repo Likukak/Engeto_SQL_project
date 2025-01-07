@@ -1,36 +1,28 @@
 -- Rostou v průběhu let mzdy ve všech odvětvích, nebo v některých klesají?
 
--- Pohled, přidání přechozích mezd pomocí lag.
-CREATE OR REPLACE VIEW payroll_with_lag AS
+-- Vytvoření pohledu pro porovnání průměrných mezd v různých odvětvých, procentuální meziroční změnu a celonárodní průměrnou mzdu.
+CREATE OR REPLACE VIEW v_rb_payroll_trend_analysis AS
 SELECT 
     year,
     industry,
     industry_code,
-    AVG(payroll) AS avg_payroll,
-    LAG(AVG(payroll)) OVER (PARTITION BY industry_code ORDER BY year) AS prev_year_payroll
-FROM t_romana_belohoubkova_project_SQL_primary_final
-GROUP BY year, industry, industry_code;
-
--- Vytvoření pohledu pro porovnání průměrných mezd v různých odvětvých, procentuální meziroční změnu a celonárodní průměrnou mzdu.
-CREATE OR REPLACE VIEW payroll_trend_analysis AS
-SELECT 
-    pwl.year,
-    pwl.industry,
-    pwl.industry_code,
-    pwl.avg_payroll,
-    pwl.prev_year_payroll,
-    ROUND(AVG(pwl.avg_payroll) OVER (PARTITION BY pwl.year), 2) AS national_avg_payroll,
+    ROUND(AVG(payroll), 2) AS avg_payroll,
+    LAG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY industry_code ORDER BY year) AS prev_year_payroll,
+    ROUND(AVG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY year), 2) AS national_avg_payroll,
     CASE 
-        WHEN pwl.prev_year_payroll IS NULL THEN NULL
-        ELSE ROUND(((pwl.avg_payroll - pwl.prev_year_payroll) / pwl.prev_year_payroll) * 100, 2)
+        WHEN LAG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY industry_code ORDER BY year) IS NULL THEN NULL
+        ELSE ROUND((
+            (ROUND(AVG(payroll), 2) - LAG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY industry_code ORDER BY year)) 
+            / LAG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY industry_code ORDER BY year)) * 100, 2)
     END AS percent_change,
     CASE 
-        WHEN pwl.prev_year_payroll IS NULL THEN NULL
-        WHEN pwl.avg_payroll > pwl.prev_year_payroll THEN 'increased'
-        WHEN pwl.avg_payroll < pwl.prev_year_payroll THEN 'decreased'
+        WHEN LAG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY industry_code ORDER BY year) IS NULL THEN NULL
+        WHEN ROUND(AVG(payroll), 2) > LAG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY industry_code ORDER BY year) THEN 'increased'
+        WHEN ROUND(AVG(payroll), 2) < LAG(ROUND(AVG(payroll), 2)) OVER (PARTITION BY industry_code ORDER BY year) THEN 'decreased'
         ELSE 'no change'
     END AS trend
-FROM payroll_with_lag AS pwl;
+FROM t_romana_belohoubkova_project_SQL_primary_final
+GROUP BY year, industry, industry_code;
 
 -- Zjisti odvětví ve kterých mzdy klesaly a v kterém roce.
 SELECT DISTINCT 
@@ -39,15 +31,20 @@ SELECT DISTINCT
     			industry_code, 
     			avg_payroll, 
    				percent_change 
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 WHERE trend = 'decreased'
 ORDER BY year, industry;
+
+-- Zjisti v kolika odvětvých se platy v letech snižovaly.
+SELECT DISTINCT industry 
+FROM v_rb_payroll_trend_analysis AS vrpta 
+WHERE trend = 'decreased';
 
 -- Zjisti odvětví ve kterých se mzdy v průběhu let nesnižovaly.
 SELECT 
 	industry, 
 	industry_code
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 GROUP BY industry, industry_code
 HAVING SUM(CASE 
 			WHEN trend = 'decreased' THEN 1 
@@ -59,7 +56,7 @@ SELECT
 	industry, 
 	industry_code, 
 	COUNT(*) AS growth_years
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 WHERE trend = 'increased'
 GROUP BY industry, industry_code
 ORDER BY growth_years DESC;
@@ -69,7 +66,7 @@ SELECT
 	industry, 
 	industry_code, 
 	COUNT(*) AS growth_years
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 WHERE trend = 'decreased'
 GROUP BY industry, industry_code
 ORDER BY growth_years DESC;
@@ -79,7 +76,7 @@ SELECT
     industry,
     industry_code,
     ROUND(AVG(percent_change), 2) AS avg_growth
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 WHERE trend IS NOT NULL 
   	AND percent_change IS NOT NULL 
 GROUP BY industry, industry_code
@@ -91,11 +88,11 @@ SELECT
 	industry_code,
 	industry,
 	MAX(percent_change) AS max_percent_change
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 WHERE percent_change IS NOT NULL
 GROUP BY `year`, industry_code, industry 
 ORDER BY max_percent_change DESC
-LIMIT 1;
+LIMIT 3;
 
 -- Zjisti nejzápornější meziroční procentuální změnu.
 SELECT
@@ -103,18 +100,18 @@ SELECT
 	industry_code,
 	industry,
 	MIN(percent_change) AS min_percent_change
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 WHERE percent_change IS NOT NULL
 GROUP BY `year`, industry_code, industry 
 ORDER BY min_percent_change ASC 
-LIMIT 1;
+LIMIT 3;
 
 -- Zjisti procentuální změny mezi první a poslední výplatou v celém sledovaném období. (Kde si za léta nejvíce polepšili)
 SELECT 
     industry,
     industry_code,
     ROUND(((MAX(avg_payroll) - MIN(avg_payroll)) / MIN(avg_payroll)) * 100, 2) AS total_percent_change
-FROM payroll_trend_analysis AS pta 
+FROM v_rb_payroll_trend_analysis AS vrpta 
 GROUP BY industry, industry_code
 ORDER BY total_percent_change DESC;
 
