@@ -5,7 +5,7 @@
 
 ## Popis projektu
 
-Tento projekt zkoumá ceny základních potravin, výši mezd, růst HDP a dalších ekonomických ukazatelů v České republice. Cílem je porovnat *dostupnost potravin na základě průměrných příjmů* za určité časové období. Lze díky němu analyzovat, jaká je korelace mezi růstem mezd, cenou potravin a HDP a jak se mění platy i dostupnost potravin v průběhu času.
+Tento projekt se zaměřuje na analýzu cen základních potravin, výše mezd a růstu HDP v České republice. Cílem je zjistit, jak se *mění dostupnost potravin na základě průměrných příjmů v průběhu času a zda existuje souvislost mezi růstem mezd, cenami potravin a HDP.* Projekt umožňuje odpovědět na otázky týkající se změn v kupní síle, vývoje cen potravin a vztahu mezi ekonomickými ukazateli.
 
 ### Struktura dat
 
