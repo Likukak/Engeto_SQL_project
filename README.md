@@ -21,4 +21,5 @@ V tomto projektu používám dvě mnou vytvořené tabulky, které jsem vytvoři
 - MariaDB
 
 ##### Kontakt
-Pokud máte dotazy nebo návrhy, můžete mě kontaktovat na [romanabelohoubkova@gmail.com](mailto:romanabelohoubkova@gmail.com).
+Pokud máte dotazy nebo návrhy, můžete mě kontaktovat na [romanabelohoubkova@gmail.com](mailto:romanabelohoubkova@gmail.com),
+nebo na Discord: romana_belohoubkova
